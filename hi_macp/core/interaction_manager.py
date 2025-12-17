@@ -328,8 +328,8 @@ class InteractionManager:
         if not phase:
             return None
         allowed = {
-            "opening": {"inform", "propose", "clarify", "challenge", "repair"},
-            "negotiation": {"inform", "propose", "clarify", "challenge", "revise", "repair"},
+            "opening": {"inform", "propose", "clarify", "challenge", "repair", "tool_action"},
+            "negotiation": {"inform", "propose", "clarify", "challenge", "revise", "repair", "tool_action"},
             "repair": {"inform", "clarify", "challenge", "revise", "repair", "tool_action"},
             "execution": {"inform", "repair", "commit", "tool_action", "confirm"},
             "closing": {"inform", "confirm", "repair", "commit"},
