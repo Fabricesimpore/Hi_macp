@@ -1,0 +1,32 @@
+name: HI MACP Simulate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  hi-simulate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install HI-MACP
+        run: pip install .
+      - name: Configure git for pushes
+        run: |
+          git config --global user.email "hi-bot@example.com"
+          git config --global user.name "hi-bot"
+      - name: Run HI-MACP in simulate
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          HI_MACP_ALLOW_EXECUTE: "0"
+          HI_MACP_GH_OWNER: ${{ github.repository_owner }}
+          HI_MACP_GH_REPO: ${{ github.event.repository.name }}
+          HI_MACP_GH_BRANCH: ${{ github.ref_name }}
+        run: |
+          python -m hi_macp.cli.hi doctor
+          python -m hi_macp.cli.hi run --goal "keep CI green" --env-name dev --kube-context dummy --namespace staging

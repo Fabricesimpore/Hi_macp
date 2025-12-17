@@ -1,0 +1,15 @@
+.env
+.env.*
+openai.json
+.envrc
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+coverage.xml
+*.log
+mvp/logs/
+envs/
+.venv/
+.gitconfig

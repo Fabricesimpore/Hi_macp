@@ -1,0 +1,1 @@
+"""HI-MACP package root."""

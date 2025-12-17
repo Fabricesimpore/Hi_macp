@@ -1,0 +1,6 @@
+policies:
+  require_dry_run_before_execute: true
+  require_smoke_tests_for_deploy: true
+  require_rollback_plan: true
+  require_health_check: true
+  infra_require_terraform_plan: true

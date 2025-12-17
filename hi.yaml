@@ -1,0 +1,4 @@
+project: hi-macp-demo
+default_env: dev
+policy:
+  file: policies/default.yaml
