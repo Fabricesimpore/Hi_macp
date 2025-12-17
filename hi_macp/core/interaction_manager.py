@@ -330,7 +330,7 @@ class InteractionManager:
         allowed = {
             "opening": {"inform", "propose", "clarify", "challenge", "repair"},
             "negotiation": {"inform", "propose", "clarify", "challenge", "revise", "repair"},
-            "repair": {"inform", "clarify", "challenge", "revise", "repair"},
+            "repair": {"inform", "clarify", "challenge", "revise", "repair", "tool_action"},
             "execution": {"inform", "repair", "commit", "tool_action", "confirm"},
             "closing": {"inform", "confirm", "repair", "commit"},
         }
