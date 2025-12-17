@@ -10,6 +10,11 @@ __pycache__/
 coverage.xml
 *.log
 mvp/logs/
+hi_macp/logs/
+hi_macp/logs.db
+hi_macp/shared.json
+mvp/logs.db
+mvp/shared.json
 envs/
 .venv/
 .gitconfig
