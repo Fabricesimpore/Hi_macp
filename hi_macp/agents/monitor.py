@@ -156,17 +156,26 @@ class AgentMonitor:
             plan_status = "committed"
             unresolved = [u for u in unresolved if u not in {"tradeoff_debate_missing", "tradeoff_not_justified", "plan_status_not_committed"}]
         conflict_msg = ""
-        if plan_status != "committed" or not tasks or unresolved:
+        tool_results = shared.get("world_state", {}).get("tool_results", [])
+        allow_execute = shared.get("world_state", {}).get("tool_capabilities", {}).get("allow_execute", False)
+        push_seen = any(
+            tr.get("action") in {"git", "git_push", "git_commit", "github_create_pull_request", "github_rerun_workflow_run"}
+            for tr in tool_results
+        )
+        if plan_status != "committed" or not tasks or unresolved or (allow_execute and not tool_results):
             conflict_msg = f"Monitor: plan not committed or tasks missing or unresolved: {unresolved}"
             # If tool failures exist, include details
-            tool_results = shared.get("world_state", {}).get("tool_results", [])
             failed_tools = [tr for tr in tool_results if tr.get("status") not in {"success"}]
             if failed_tools:
                 conflict_msg += f"; tool_failures={failed_tools}"
-            if not tool_results and shared.get("world_state", {}).get("tool_capabilities", {}).get("allow_execute", False):
+            if not tool_results and allow_execute:
                 conflict_msg += "; tool_results missing for execute mode"
             # CI check
-        ci_unresolved, ci_state = self._check_ci(shared)
+        # Skip CI gating until a push/PR action occurred in this run to avoid stale CI failures
+        if allow_execute and pr_mode and not push_seen:
+            ci_unresolved, ci_state = [], {}
+        else:
+            ci_unresolved, ci_state = self._check_ci(shared)
         if ci_state:
             shared.setdefault("world_state", {})["ci_state"] = ci_state
             self.manager.save_shared(shared)
