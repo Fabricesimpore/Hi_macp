@@ -56,6 +56,9 @@ GitHub/CI POC hooks:
 - Patch safety: `HI_MACP_ALLOWED_PATCH_DIRS` (comma-separated) restricts fs_write targets; `HI_MACP_FAIL_ON_MISSING_PATH=1` (default) fails writes to non-existent files to avoid zero-byte mistakes.
 - CI tuning: `HI_MACP_CI_CONCURRENCY_SUFFIX` appends a suffix to CI fix branches to avoid Actions concurrency self-cancel; repeated CI failures set `ci_cache_suspect` tag to remind clearing caches.
 - Simulate-only: `HI_MACP_SIMULATE_ONLY=1` relaxes task-length/DAG/tradeoff gating so dry runs converge; execute mode remains strict. Export a run transcript via `InteractionManager.export_transcript(<path>)` for debugging.
+- GH token preflight: CLI will warn/skip GitHub CI if `GH_TOKEN` is missing/invalid when `allow_execute` is true and GH repo/workflow are set.
+- SSH-first: CLI warns when no SSH key is found and prefers PR/simulate over direct pushes. Use `hi configure` to validate SSH + GH_TOKEN and set origin to SSH.
+- Branch protection preflight: if the target branch is protected, the CLI forces PR-first mode. Direct push requires explicit `HI_MACP_ALLOW_DIRECT_PUSH=1`.
 
 Autonomous deploy / CI-repair (safe defaults):
 - Enable execution in your env (`allow_execute: true`) and pass a PAT in `GH_TOKEN` so pushes trigger CI. Approval gate via `HI_MACP_REQUIRE_APPROVAL=1` + `HI_MACP_APPROVED_BY`.
@@ -100,8 +103,17 @@ python mvp/tests_edge_cases.py
 HI_MACP_TOOL_DEMO=1 python mvp/run.py
 # Run tests (requires pytest in your env)
 pytest
+# Configure SSH/GitHub (optional helper)
+python -m hi_macp.cli.configure --repo Fabricesimpore/Hi_macp
+# Push policy:
+# - Default is PR-first; set HI_MACP_ALLOW_DIRECT_PUSH=1 only if direct push is allowed.
 # Set allow_execute=true in envs/dev.yaml if you want real kubectl/helm/terraform/docker calls (defaults to simulate/dry-run).
 # View execution log (concise / full)
 python mvp/view_run.py mvp/logs/run_YYYYMMDDTHHMMSS.json
 python mvp/view_run.py mvp/logs/run_YYYYMMDDTHHMMSS.json --full
+
+## Governance boundary
+- HI-MACP decides when automation is allowed; it will not self-escalate authority.
+- If credentials/permissions are missing or restricted (SSH, branch protection, PAT scope), it will prefer PRs or simulate mode rather than forcing changes.
 ```
+Autonomous PR test
