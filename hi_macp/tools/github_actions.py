@@ -15,6 +15,18 @@ def _headers() -> Dict[str, str]:
     return headers
 
 
+def _ensure_api_response(resp: httpx.Response) -> Dict[str, Any] | None:
+    """Guardrail: fail if GitHub returns HTML/redirect instead of JSON API."""
+    ctype = resp.headers.get("content-type", "")
+    text = resp.text or ""
+    if "<html" in text.lower() or "<!doctype" in text.lower():
+        return {"status": "transport_error", "details": "HTML detected instead of GitHub API JSON (check token/transport)"}
+    if not any(token in ctype for token in ("json", "zip", "octet-stream")) and resp.status_code != 302:
+        # Allow 302 for log redirects and zip/octet-stream for logs
+        return {"status": "transport_error", "details": f"unexpected content-type '{ctype}' from GitHub API"}
+    return None
+
+
 def list_workflow_runs(owner: str, repo: str, workflow_id: str, branch: str) -> Dict[str, Any]:
     url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs"
     params = {"branch": branch, "per_page": 1}
@@ -23,6 +35,9 @@ def list_workflow_runs(owner: str, repo: str, workflow_id: str, branch: str) -> 
             resp = client.get(url, headers=_headers(), params=params)
         if resp.status_code == 401:
             return {"status": "unauthorized", "details": "GH_TOKEN missing or invalid"}
+        guard = _ensure_api_response(resp)
+        if guard:
+            return guard
         resp.raise_for_status()
         data = resp.json()
         runs = data.get("workflow_runs") or []
@@ -47,6 +62,9 @@ def rerun_workflow_run(owner: str, repo: str, run_id: int) -> Dict[str, Any]:
             resp = client.post(url, headers=_headers())
         if resp.status_code == 401:
             return {"status": "unauthorized", "details": "GH_TOKEN missing or invalid"}
+        guard = _ensure_api_response(resp)
+        if guard:
+            return guard
         if resp.status_code in {201, 202}:
             return {"status": "success", "rerun_triggered": True}
         return {"status": "error", "details": f"status {resp.status_code}: {resp.text}"}
@@ -65,6 +83,9 @@ def create_pull_request(owner: str, repo: str, head: str, base: str, title: str,
             resp = client.post(url, headers=_headers(), json=payload)
         if resp.status_code == 401:
             return {"status": "unauthorized", "details": "GH_TOKEN missing or invalid"}
+        guard = _ensure_api_response(resp)
+        if guard:
+            return guard
         if resp.status_code in {201, 202}:
             data = resp.json()
             return {"status": "success", "number": data.get("number"), "url": data.get("html_url")}
@@ -81,6 +102,9 @@ def merge_pull_request(owner: str, repo: str, number: int, merge_method: str = "
             resp = client.put(url, headers=_headers(), json=payload)
         if resp.status_code == 401:
             return {"status": "unauthorized", "details": "GH_TOKEN missing or invalid"}
+        guard = _ensure_api_response(resp)
+        if guard:
+            return guard
         if resp.status_code in {200, 201}:
             data = resp.json()
             return {"status": "success", "merged": data.get("merged"), "sha": data.get("sha")}
@@ -100,6 +124,9 @@ def get_workflow_logs(owner: str, repo: str, run_id: int) -> Dict[str, Any]:
             return {"status": "not_found", "details": "logs not found"}
         if resp.status_code != 200:
             return {"status": "error", "details": f"status {resp.status_code}: {resp.text}"}
+        guard = _ensure_api_response(resp)
+        if guard:
+            return guard
         content_len = len(resp.content or b"")
         summary: Dict[str, Any] = {"status": "success", "log_bytes": content_len, "run_id": run_id, "details": "logs retrieved (zip binary)"}
         # Attempt to unzip and summarize

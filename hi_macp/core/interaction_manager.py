@@ -40,6 +40,13 @@ class InteractionManager:
             shared["world_state"]["challenge_count"] = shared.get("world_state", {}).get("challenge_count", 0) + 1
         if message.type in {"revise", "repair"}:
             shared["world_state"]["revise_or_repair_count"] = shared.get("world_state", {}).get("revise_or_repair_count", 0) + 1
+        # Track push policy context if present
+        policy = shared.get("world_state", {}).get("push_policy")
+        if not policy:
+            shared.setdefault("world_state", {})["push_policy"] = {
+                "mode": "pr-first",
+                "reason": "default",
+            }
         try:
             self.memory.update_from_message(summary, message.to_dict(), shared)
         except Exception:
@@ -172,11 +179,12 @@ class InteractionManager:
         if plan_status == "committed" and not tasks:
             return True, "Commitment recorded but no tasks present."
         simulate_only = os.environ.get("HI_MACP_SIMULATE_ONLY", "0") == "1"
+        force_pr = os.environ.get("HI_MACP_FORCE_PR_MODE") == "1"
         # Failure Mode 3: if executor rewrites plan with fewer steps than proposed
         history = shared.get("history", [])
         proposed = next((h for h in history if h.get("type") == "propose"), None)
         last_type = history[-1].get("type") if history else ""
-        if proposed and not simulate_only and last_type not in {"clarify", "repair", "revise", "commit"}:
+        if proposed and not simulate_only and not force_pr and last_type not in {"clarify", "repair", "revise", "commit", "confirm"}:
             proposed_steps = len(proposed.get("content", {}).get("plan", []))
             current_steps = len(tasks)
             if current_steps and current_steps < proposed_steps:
@@ -281,6 +289,12 @@ class InteractionManager:
     def _log_divergence_and_repair(self, message: Message, reason: str, metrics: Metrics | None) -> Dict[str, Any]:
         repair_content = {"conflict": reason}
         shared = self.load_shared()
+        # Map certain failures to structured guidance
+        if "git_push" in reason or "Permission" in reason or "ssh" in reason:
+            repair_content["guidance"] = "Git push failed; prefer PR mode or ensure SSH access."
+        if "requires_human_authority" in reason:
+            repair_content["guidance"] = "Action requires human approval/authority; system will not self-escalate."
+            repair_content["authority_bound"] = True
         repair = Message(
             sender="InteractionManager",
             receiver="all",

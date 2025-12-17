@@ -113,12 +113,17 @@ class AgentPlanner:
         ci_tags = shared.get("world_state", {}).get("ci_tags") or {}
         ci_state = shared.get("world_state", {}).get("ci_state") or {}
         github_cfg = shared.get("world_state", {}).get("github") or {}
-        pr_mode = bool(os.environ.get("HI_MACP_PR_MODE", "0") == "1" or github_cfg.get("pr_mode"))
+        push_policy = (shared.get("world_state", {}).get("push_policy") or {}).get("mode")
+        pr_mode_env = os.environ.get("HI_MACP_PR_MODE", "0") == "1" or os.environ.get("HI_MACP_FORCE_PR_MODE") == "1"
+        pr_mode = bool(pr_mode_env or github_cfg.get("pr_mode") or push_policy in {"pr-first", "pr-only"})
         pr_branch = os.environ.get("HI_MACP_PR_BRANCH") or github_cfg.get("pr_branch") or "ci-fix/auto"
         suffix = os.environ.get("HI_MACP_CI_CONCURRENCY_SUFFIX") or github_cfg.get("concurrency_suffix")
         if suffix:
             pr_branch = f"{pr_branch}-{suffix}"
         pr_number = shared.get("world_state", {}).get("pr_number")
+        if pr_mode:
+            shared.setdefault("world_state", {}).setdefault("github", {})["branch"] = pr_branch
+            self.manager.save_shared(shared)
         max_commits = int(os.environ.get("HI_MACP_MAX_COMMITS", "3"))
         max_reruns = int(os.environ.get("HI_MACP_MAX_CI_RERUNS", "2"))
         ci_reruns = shared.get("world_state", {}).get("ci_reruns", 0)

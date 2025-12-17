@@ -59,6 +59,7 @@ GitHub/CI POC hooks:
 - GH token preflight: CLI will warn/skip GitHub CI if `GH_TOKEN` is missing/invalid when `allow_execute` is true and GH repo/workflow are set.
 - SSH-first: CLI warns when no SSH key is found and prefers PR/simulate over direct pushes. Use `hi configure` to validate SSH + GH_TOKEN and set origin to SSH.
 - Branch protection preflight: if the target branch is protected, the CLI forces PR-first mode. Direct push requires explicit `HI_MACP_ALLOW_DIRECT_PUSH=1`.
+- Transport guardrails: git network ops must use SSH remotes (git@github.com); HTML in command/API responses is treated as a transport violation. Recommended one-time hardening: `git config --global url.\"git@github.com:\".insteadOf https://github.com/`.
 
 Autonomous deploy / CI-repair (safe defaults):
 - Enable execution in your env (`allow_execute: true`) and pass a PAT in `GH_TOKEN` so pushes trigger CI. Approval gate via `HI_MACP_REQUIRE_APPROVAL=1` + `HI_MACP_APPROVED_BY`.
@@ -115,5 +116,7 @@ python mvp/view_run.py mvp/logs/run_YYYYMMDDTHHMMSS.json --full
 ## Governance boundary
 - HI-MACP decides when automation is allowed; it will not self-escalate authority.
 - If credentials/permissions are missing or restricted (SSH, branch protection, PAT scope), it will prefer PRs or simulate mode rather than forcing changes.
+- Push policy: default is PR-first; force direct push only with `HI_MACP_ALLOW_DIRECT_PUSH=1`. Branch protection preflight forces PR mode. Tool/auth failures include guidance to switch to PR/SSH rather than self-escalating.
 ```
 Autonomous PR test
+autonomous pr test Wed Dec 17 11:51:55 CST 2025

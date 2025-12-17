@@ -199,6 +199,14 @@ def reset_shared(
             indent=2,
         )
     )
+    # Clear run-scoped state that should not persist (e.g., stale CI or tool results)
+    try:
+        data = json.loads(shared_path.read_text())
+        data.setdefault("world_state", {})["ci_state"] = {}
+        data["world_state"]["tool_results"] = []
+        shared_path.write_text(json.dumps(data, indent=2))
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -422,11 +430,9 @@ def main() -> None:
         actions = shared_state.get("world_state", {}).get("tool_actions") or []
         if not actions:
             return shared_state
-        # Skip executing tool actions if we are in repair/clarifying phases to avoid phase violations
+        # Skip only after alignment; allow during repair to populate tool_results for monitor
         plan_status_local = shared_state.get("commitments", {}).get("plan_status")
         phase_local = shared_state.get("phase")
-        if plan_status_local in {"repair", "repair_required", "clarifying"} or phase_local in {"repair", "clarifying"}:
-            return shared_state
         # Do not emit tool actions after closing/aligned
         if phase_local in {"closing", "execution"} and shared_state.get("commitments", {}).get("monitor_confirmed"):
             return shared_state

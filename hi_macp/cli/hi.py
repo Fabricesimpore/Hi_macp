@@ -11,6 +11,7 @@ import subprocess
 from hi_macp.runtime import run as hi_run
 from hi_macp.cli import view_run as hi_view
 from hi_macp.runtime.run import load_project_config
+from hi_macp.cli.configure import configure as hi_configure
 
 
 def _logs_dir() -> Path:
@@ -55,6 +56,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         os.environ["HI_MACP_CONFIG"] = args.config
     if args.env_name:
         os.environ["HI_MACP_ENV_NAME"] = args.env_name
+        print(f"Using env_name={args.env_name}")
     if args.kube_context:
         os.environ["HI_MACP_KUBE_CONTEXT"] = args.kube_context
     if args.namespace:
@@ -67,9 +69,54 @@ def cmd_run(args: argparse.Namespace) -> None:
     os.environ["HI_MACP_MONITOR"] = "1" if args.monitor else "0"
     os.environ["HI_MACP_STRESS"] = "1" if args.stress else "0"
     os.environ["HI_MACP_REDUCED_STRESS"] = "1" if args.reduced_stress else "0"
+    # Default to PR-first unless explicitly allowed to push directly
+    if os.environ.get("HI_MACP_ALLOW_DIRECT_PUSH", "0") != "1":
+        os.environ["HI_MACP_PR_MODE"] = "1"
     if args.policy_file:
         os.environ["HI_MACP_POLICY_FILE"] = args.policy_file
         os.environ["HI_MACP_POLICY_ENFORCE"] = "1"
+    # GitHub token preflight for execute mode
+    if os.environ.get("HI_MACP_ALLOW_EXECUTE") == "1":
+        gh_owner = os.environ.get("HI_MACP_GH_OWNER")
+        gh_repo = os.environ.get("HI_MACP_GH_REPO")
+        if gh_owner and gh_repo:
+            token = os.environ.get("GH_TOKEN")
+            if not token:
+                print("WARN: GH_TOKEN not set; GitHub CI loop will be disabled.")
+            else:
+                try:
+                    import httpx  # type: ignore
+                    resp = httpx.get("https://api.github.com/user", headers={"Authorization": f"token {token}"}, timeout=5)
+                    if resp.status_code == 401:
+                        print("ERROR: GH_TOKEN invalid (401). Execute run will skip GitHub actions.")
+                        os.environ["HI_MACP_GH_OWNER"] = ""
+                        os.environ["HI_MACP_GH_REPO"] = ""
+                        os.environ["HI_MACP_GH_WORKFLOW"] = ""
+                except Exception:
+                    pass
+        # SSH preflight for git pushes; if missing, prefer PR/simulate
+        ssh_key = Path.home() / ".ssh" / "id_rsa"
+        ssh_key_ed = Path.home() / ".ssh" / "id_ed25519"
+        has_ssh = ssh_key.exists() or ssh_key_ed.exists()
+        if not has_ssh:
+            print("WARN: No SSH key found (~/.ssh/id_rsa or id_ed25519). Agent will prefer PR/simulate over direct push.")
+            os.environ["HI_MACP_FORCE_PR_MODE"] = "1"
+        # Branch protection preflight: if protected, force PR mode
+        gh_owner = os.environ.get("HI_MACP_GH_OWNER")
+        gh_repo = os.environ.get("HI_MACP_GH_REPO")
+        gh_branch = os.environ.get("HI_MACP_GH_BRANCH", "main")
+        token = os.environ.get("GH_TOKEN")
+        if gh_owner and gh_repo and token:
+            try:
+                import httpx  # type: ignore
+                url = f"https://api.github.com/repos/{gh_owner}/{gh_repo}/branches/{gh_branch}/protection"
+                resp = httpx.get(url, headers={"Authorization": f"token {token}"}, timeout=5)
+                if resp.status_code == 200:
+                    print(f"WARN: Branch '{gh_branch}' is protected; enabling PR-first mode.")
+                    os.environ["HI_MACP_FORCE_PR_MODE"] = "1"
+                    os.environ["HI_MACP_PR_MODE"] = "1"
+            except Exception:
+                pass
     print(f"Running HI-MACP with goal='{args.goal}' env={args.env}")
     hi_run.main()
 
@@ -202,6 +249,10 @@ def cmd_doctor(_: argparse.Namespace) -> None:
         print(f"[{prefix}] llm: {detail}")
 
 
+def cmd_configure(args: argparse.Namespace) -> None:
+    hi_configure(args.repo)
+
+
 def cmd_init(args: argparse.Namespace) -> None:
     target = Path(args.path).resolve()
     target.mkdir(parents=True, exist_ok=True)
@@ -303,6 +354,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     pd = sub.add_parser("doctor", help="Check toolchain and config readiness")
     pd.set_defaults(func=cmd_doctor)
+
+    pcfg = sub.add_parser("configure", help="Validate SSH + GitHub token and set origin to SSH")
+    pcfg.add_argument("--repo", help="owner/repo to set as origin (SSH)", required=False)
+    pcfg.set_defaults(func=cmd_configure)
 
     return parser
 

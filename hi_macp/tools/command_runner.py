@@ -64,6 +64,8 @@ class CommandRunner:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.DEFAULT_TIMEOUT)
             output = (proc.stdout or "") + (proc.stderr or "")
             output = output[: self.MAX_OUTPUT]
+            if self._looks_like_html(output):
+                return self._result(action, mode, target, status="transport_error", details="HTML detected in command output (transport violation)")
             status = "success" if proc.returncode == 0 else "failure"
             return self._result(action, mode, target, status=status, details=output.strip())
         except subprocess.TimeoutExpired:
@@ -119,13 +121,62 @@ class CommandRunner:
                 "status": "unauthorized",
                 "details": "approval required (set HI_MACP_APPROVED_BY)",
             }
+        if binary == "git":
+            guard = self._ensure_git_ssh(args, cwd)
+            if guard:
+                return guard
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.DEFAULT_TIMEOUT, cwd=cwd)
             output = (proc.stdout or "") + (proc.stderr or "")
             output = output[: self.MAX_OUTPUT]
+            if self._looks_like_html(output):
+                return {
+                    "action": binary,
+                    "mode": "execute",
+                    "target": " ".join(args),
+                    "status": "transport_error",
+                    "details": "HTML detected in command output (transport violation)",
+                }
             status = "success" if proc.returncode == 0 else "failure"
             return {"action": binary, "mode": "execute", "target": " ".join(args), "status": status, "details": output.strip()}
         except subprocess.TimeoutExpired:
             return {"action": binary, "mode": "execute", "target": " ".join(args), "status": "timeout", "details": "command timed out"}
         except Exception as exc:  # pragma: no cover - safety net
             return {"action": binary, "mode": "execute", "target": " ".join(args), "status": "error", "details": str(exc)}
+
+    def _looks_like_html(self, text: str) -> bool:
+        return "<html" in text.lower() or "<!doctype" in text.lower()
+
+    def _ensure_git_ssh(self, args: list[str], cwd: str | None) -> Dict[str, Any] | None:
+        """Enforce SSH transport for git network operations."""
+        network_ops = {"push", "pull", "fetch", "clone"}
+        if not any(op in args for op in network_ops):
+            return None
+        try:
+            proc = subprocess.run(
+                ["git", "config", "--get", "remote.origin.url"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=cwd,
+            )
+            remote = (proc.stdout or "").strip()
+        except Exception:
+            remote = ""
+        if not remote:
+            return {
+                "action": "git",
+                "mode": "execute",
+                "target": " ".join(args),
+                "status": "unauthorized",
+                "details": "remote.origin.url missing; configure SSH remote before network git operations",
+            }
+        if not (remote.startswith("git@github.com:") or remote.startswith("ssh://git@github.com/")):
+            return {
+                "action": "git",
+                "mode": "execute",
+                "target": " ".join(args),
+                "status": "transport_error",
+                "details": f"transport violation: remote '{remote}' is not SSH (git@github.com). Set SSH remote before push/pull.",
+            }
+        return None

@@ -62,6 +62,7 @@ class AgentMonitor:
         resources = shared.get("resources", {}).get("credentials", {})
         delegated = shared.get("world_state", {}).get("delegated_deploy_to")
         simulate_only = os.environ.get("HI_MACP_SIMULATE_ONLY", "0") == "1" or not shared.get("world_state", {}).get("tool_capabilities", {}).get("allow_execute", False)
+        pr_mode = os.environ.get("HI_MACP_PR_MODE") == "1" or os.environ.get("HI_MACP_FORCE_PR_MODE") == "1" or (shared.get("world_state", {}).get("github") or {}).get("pr_mode")
         # If plan is stuck in repair but tradeoffs + tasks exist, move to revised
         if plan_status in {"repair", "repair_required"} and tasks:
             last_with_plan = next((h for h in reversed(shared.get("history", [])) if h.get("content", {}).get("plan")), {})
@@ -104,6 +105,10 @@ class AgentMonitor:
                 unresolved.append("tradeoff_not_justified")
             if not self._debate_quality(shared) and not simulate_only:
                 unresolved.append("tradeoff_debate_missing")
+        # DAG unresolved communication
+        dag_unresolved = shared.get("world_state", {}).get("dag_unresolved") or []
+        if dag_unresolved and not simulate_only:
+            unresolved.append("dag_unresolved")
         # If we have challenge + revise/repair with tradeoff note, clear monitor_pending
         if self._debate_quality(shared):
             shared["commitments"]["monitor_request_pending"] = False
@@ -150,6 +155,7 @@ class AgentMonitor:
             self.manager.save_shared(shared)
             plan_status = "committed"
             unresolved = [u for u in unresolved if u not in {"tradeoff_debate_missing", "tradeoff_not_justified", "plan_status_not_committed"}]
+        conflict_msg = ""
         if plan_status != "committed" or not tasks or unresolved:
             conflict_msg = f"Monitor: plan not committed or tasks missing or unresolved: {unresolved}"
             # If tool failures exist, include details
@@ -164,6 +170,17 @@ class AgentMonitor:
         if ci_state:
             shared.setdefault("world_state", {})["ci_state"] = ci_state
             self.manager.save_shared(shared)
+            # If PR mode, require CI success before alignment
+            if pr_mode:
+                status_text = ci_state.get("status_text")
+                conclusion = ci_state.get("conclusion")
+                run_id = ci_state.get("run_id")
+                if status_text in {"queued", "in_progress"}:
+                    ci_unresolved.append("ci_running")
+                elif status_text == "completed" and conclusion != "success":
+                    ci_unresolved.append(f"ci_failed:{conclusion or 'unknown'}")
+                elif not run_id:
+                    ci_unresolved.append("ci_run_not_found")
         if ci_unresolved:
             conflict_msg += f"; ci={ci_unresolved}"
             # Attempt to fetch CI logs and classify failure when CI failed
@@ -185,6 +202,23 @@ class AgentMonitor:
                         tags["ci_cache_suspect"] = True
                     shared["world_state"]["ci_tags"] = tags
                     self.manager.save_shared(shared)
+            # If CI is still running or failed in PR mode, emit explicit repair
+            if pr_mode:
+                repair = Message(
+                    sender=self.name,
+                    receiver="all",
+                    type="repair",
+                    content={
+                        "conflict": conflict_msg,
+                        "ci_state": ci_state,
+                        "push_policy": shared.get("world_state", {}).get("push_policy"),
+                        "governance": "PR-first enforced; awaiting CI to merge",
+                    },
+                    confidence=0.8,
+                    assumptions=["Planner/Executor will adjust (wait/rerun/fix)"],
+                    context={"goal": "create plan", "phase": "repair"},
+                )
+                return self.manager.route(repair, metrics=metrics)
             repair = Message(
                 sender=self.name,
                 receiver="all",
