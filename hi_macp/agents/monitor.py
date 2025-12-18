@@ -20,11 +20,15 @@ class AgentMonitor:
             "owner": os.environ.get("HI_MACP_GH_OWNER"),
             "repo": os.environ.get("HI_MACP_GH_REPO"),
             "workflow_id": os.environ.get("HI_MACP_GH_WORKFLOW"),
-            "branch": os.environ.get("HI_MACP_GH_BRANCH"),
+            # CI branch defaults to world_state.github.branch; allow override via HI_MACP_CI_BRANCH.
+            "branch": os.environ.get("HI_MACP_CI_BRANCH"),
         }
         for k, v in env_override.items():
             if v:
                 gh[k] = v
+        # If no CI branch was specified, do not override an existing branch in world_state.
+        if not gh.get("branch"):
+            gh["branch"] = (shared.get("world_state") or {}).get("github", {}).get("branch") or os.environ.get("HI_MACP_GH_BRANCH")
         return gh
 
     def _check_ci(self, shared: dict) -> tuple[list[str], dict]:
@@ -162,6 +166,12 @@ class AgentMonitor:
             tr.get("action") in {"git", "git_push", "git_commit", "github_create_pull_request", "github_rerun_workflow_run"}
             for tr in tool_results
         )
+        pr_create_blocked = any(
+            tr.get("status") in {"unauthorized", "failure", "error"}
+            and "create pr" in (tr.get("details") or "").lower()
+            or "resource not accessible by personal access token" in (tr.get("details") or "").lower()
+            for tr in tool_results
+        )
         if plan_status != "committed" or not tasks or unresolved or (allow_execute and not tool_results):
             conflict_msg = f"Monitor: plan not committed or tasks missing or unresolved: {unresolved}"
             # If tool failures exist, include details
@@ -213,6 +223,12 @@ class AgentMonitor:
                     self.manager.save_shared(shared)
             # If CI is still running or failed in PR mode, emit explicit repair
             if pr_mode:
+                if pr_create_blocked:
+                    shared.setdefault("world_state", {})["push_policy"] = {
+                        "mode": "branch-only",
+                        "reason": "pr_create_unauthorized",
+                    }
+                    self.manager.save_shared(shared)
                 repair = Message(
                     sender=self.name,
                     receiver="all",
@@ -221,7 +237,7 @@ class AgentMonitor:
                         "conflict": conflict_msg,
                         "ci_state": ci_state,
                         "push_policy": shared.get("world_state", {}).get("push_policy"),
-                        "governance": "PR-first enforced; awaiting CI to merge",
+                        "governance": "PR-first enforced; falling back to branch-only when PR creation is unauthorized; CI still required",
                     },
                     confidence=0.8,
                     assumptions=["Planner/Executor will adjust (wait/rerun/fix)"],

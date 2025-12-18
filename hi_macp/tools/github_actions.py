@@ -83,6 +83,13 @@ def create_pull_request(owner: str, repo: str, head: str, base: str, title: str,
             resp = client.post(url, headers=_headers(), json=payload)
         if resp.status_code == 401:
             return {"status": "unauthorized", "details": "GH_TOKEN missing or invalid"}
+        if resp.status_code == 403 and "Resource not accessible by personal access token" in (resp.text or ""):
+            scopes = resp.headers.get("x-oauth-scopes", "")
+            return {
+                "status": "unauthorized",
+                "details": "GH_TOKEN lacks permission to create PRs (403). Create a token with repo scope or enable PR permissions.",
+                "oauth_scopes": scopes,
+            }
         guard = _ensure_api_response(resp)
         if guard:
             return guard

@@ -47,6 +47,7 @@ Safety/exec guards:
 
 GitHub/CI POC hooks:
 - Configure GitHub in `envs/<name>.yaml` under `github: { owner, repo, workflow_id, branch }` or via env vars `HI_MACP_GH_OWNER`, `HI_MACP_GH_REPO`, `HI_MACP_GH_WORKFLOW`, `HI_MACP_GH_BRANCH`.
+- CI branch selection: by default CI polling uses `world_state.github.branch` (e.g., a PR/fix branch). Override with `HI_MACP_CI_BRANCH` if you need to force CI polling to a specific branch.
 - Provide `GH_TOKEN` for GitHub API calls (list/rerun workflow runs). Alignment stays false if CI checks fail or no token/run is found.
 - Git actions: `git_commit`, `git_push`; GitHub Actions: `github_list_workflow_runs`, `github_rerun_workflow_run`, `github_get_workflow_logs`, `github_create_pull_request`, `github_merge_pull_request` (all respect allow_execute).
 - CI tags: CI classifier agent can emit `ci_failure_reason`/`ci_failure_location` from workflow logs for targeted repairs.
