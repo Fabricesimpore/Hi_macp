@@ -66,6 +66,7 @@ Autonomous deploy / CI-repair (safe defaults):
 - Enable execution in your env (`allow_execute: true`) and pass a PAT in `GH_TOKEN` so pushes trigger CI. Approval gate via `HI_MACP_REQUIRE_APPROVAL=1` + `HI_MACP_APPROVED_BY`.
 - Run: `hi run --goal "deploy app" --env-name dev --execute --kube-context <ctx> --namespace <ns>`. Kube context/namespace are mandatory before any execute mode step.
 - Behavior on failure: Monitor waits for CI result, fetches logs, classifies failure (`ci_tags`), Planner adds a CI-fix task plus `git commit/push`, optional `github_rerun_workflow_run`, and (in PR mode) `github_create_pull_request`; if PR CI passes and a PR number is known, Planner can request `github_merge_pull_request`. Executor runs them up to the safety caps (`HI_MACP_MAX_COMMITS`, `HI_MACP_MAX_CI_RERUNS`, tracked via `ci_reruns`). No user prompt is required for fixes once execute mode is allowed.
+- Authority-bound completion: if branch CI is green but PR creation/merge is blocked by permissions, Monitor can still mark the run aligned and attach `world_state.blockers` entries like `{type: authority_bound, action: github_create_pull_request, resolution: operator_grant}`.
 - Current limitation: CI fixes beyond missing-dependency autofix still rely on human/LLM patches. To make it fully self-healing, map additional `ci_tags` → concrete edits (lint format, test fixes) or hook an LLM patch tool, then re-use the existing commit/push/rerun/merge loop.
 
 ## Tools supported (via ToolExecutor + CommandRunner)

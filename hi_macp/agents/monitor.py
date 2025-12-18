@@ -100,7 +100,8 @@ class AgentMonitor:
                 unresolved.append("deploy_capability_mismatch")
         # Require tradeoff presence when role goals exist
         if shared.get("world_state", {}).get("role_goals"):
-            trade = (history[-1].get("content") or {}).get("tradeoffs") if history else {}
+            last_trade_msg = next((h for h in reversed(history) if (h.get("content") or {}).get("tradeoffs")), {})
+            trade = (last_trade_msg.get("content") or {}).get("tradeoffs") if last_trade_msg else {}
             if not trade or not trade.get("option") or not trade.get("justification"):
                 unresolved.append("missing_tradeoff")
         # Tradeoff justification check: require mention of secure/fast/tradeoff in history before confirming
@@ -260,12 +261,31 @@ class AgentMonitor:
             return self.manager.route(repair, metrics=metrics)
         # Confirm alignment
         # Only send confirm when phase allows; otherwise just set flags
+        blockers = []
+        for tr in tool_results:
+            if tr.get("action") == "github_create_pull_request" and tr.get("status") == "unauthorized":
+                blockers.append(
+                    {
+                        "type": "authority_bound",
+                        "action": "github_create_pull_request",
+                        "reason": "token_lacks_pr_permission",
+                        "resolution": "operator_grant",
+                        "details": tr.get("details"),
+                    }
+                )
+        if blockers:
+            shared.setdefault("world_state", {})["blockers"] = blockers
+            self.manager.save_shared(shared)
         if shared.get("phase") not in {"repair", "clarifying"}:
             confirm = Message(
                 sender=self.name,
                 receiver="all",
                 type="confirm",
-                content={"alignment": "ack", "justification": "tasks present, committed, no unresolved assumptions"},
+                content={
+                    "alignment": "ack",
+                    "justification": "branch CI green; unresolved items are authority-bound only" if blockers else "tasks present, committed, no unresolved assumptions",
+                    "blockers": blockers,
+                },
                 confidence=0.9,
                 assumptions=["Shared model consistent"],
                 context={"goal": "create plan", "phase": "closing"},
@@ -294,12 +314,13 @@ class AgentMonitor:
             unresolved.append("monitor_pending")
         tool_results = shared.get("world_state", {}).get("tool_results", [])
         push_policy = (shared.get("world_state", {}).get("push_policy") or {}).get("mode")
+        pr_mode = os.environ.get("HI_MACP_PR_MODE") == "1" or os.environ.get("HI_MACP_FORCE_PR_MODE") == "1"
         tool_failures = []
         for tr in tool_results:
             if tr.get("status") in {"success"}:
                 continue
             if (
-                push_policy == "branch-only"
+                (push_policy == "branch-only" or pr_mode)
                 and tr.get("action") == "github_create_pull_request"
                 and tr.get("status") == "unauthorized"
             ):
@@ -329,7 +350,7 @@ class AgentMonitor:
         history = shared.get("history", [])
         keywords = ("secure", "fast", "tradeoff")
         return any(
-            h.get("type") in {"clarify", "challenge", "revise", "repair"}
+            h.get("type") in {"propose", "clarify", "challenge", "revise", "repair"}
             and any(kw in json.dumps(h.get("content", {})).lower() for kw in keywords)
             for h in history
         )
