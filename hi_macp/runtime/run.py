@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from pathlib import Path
 
 from hi_macp.agents.planner import AgentPlanner
@@ -474,7 +475,16 @@ def main() -> None:
 
     # Execute DAG batches (simulate/dry-run) after reconciliation if aligned; default ON
     if monitor_enabled:
-        shared, divergence = monitor.review_alignment(metrics=metrics)
+        # Poll CI a few times to allow an end-to-end run to converge without manual reruns
+        max_polls = int(os.environ.get("HI_MACP_CI_MAX_POLLS", "12"))
+        poll_sleep = int(os.environ.get("HI_MACP_CI_POLL_SECONDS", "5"))
+        for _ in range(max_polls):
+            shared, divergence = monitor.review_alignment(metrics=metrics)
+            ci_state = shared.get("world_state", {}).get("ci_state") or {}
+            status_text = ci_state.get("status_text")
+            if status_text not in {"queued", "in_progress"}:
+                break
+            time.sleep(poll_sleep)
         if divergence[0]:
             print(f"Monitor divergence after tools: {divergence[1]}")
 

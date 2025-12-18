@@ -18,6 +18,8 @@ class CIFailureClassifier:
             ("timeout", r"timeout"),
             ("dependency_error", r"pip install|Could not find a version"),
         ]
+        if re.search(r"No module named ['\"]hi_macp\\.core['\"]", text, re.IGNORECASE):
+            return {"ci_failure_reason": "packaging_missing_subpackages", "ci_failure_location": "pyproject.toml"}
         for label, pat in patterns:
             if re.search(pat, text, re.IGNORECASE):
                 reason = label

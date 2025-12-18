@@ -195,11 +195,15 @@ class AgentMonitor:
                 conclusion = ci_state.get("conclusion")
                 run_id = ci_state.get("run_id")
                 if status_text in {"queued", "in_progress"}:
-                    ci_unresolved.append("ci_running")
+                    if "ci_running" not in ci_unresolved:
+                        ci_unresolved.append("ci_running")
                 elif status_text == "completed" and conclusion != "success":
-                    ci_unresolved.append(f"ci_failed:{conclusion or 'unknown'}")
+                    val = f"ci_failed:{conclusion or 'unknown'}"
+                    if val not in ci_unresolved:
+                        ci_unresolved.append(val)
                 elif not run_id:
-                    ci_unresolved.append("ci_run_not_found")
+                    if "ci_run_not_found" not in ci_unresolved:
+                        ci_unresolved.append("ci_run_not_found")
         if ci_unresolved:
             conflict_msg += f"; ci={ci_unresolved}"
             # Attempt to fetch CI logs and classify failure when CI failed
@@ -289,7 +293,19 @@ class AgentMonitor:
         if commitments.get("monitor_request_pending"):
             unresolved.append("monitor_pending")
         tool_results = shared.get("world_state", {}).get("tool_results", [])
-        if any(tr.get("status") not in {"success"} for tr in tool_results):
+        push_policy = (shared.get("world_state", {}).get("push_policy") or {}).get("mode")
+        tool_failures = []
+        for tr in tool_results:
+            if tr.get("status") in {"success"}:
+                continue
+            if (
+                push_policy == "branch-only"
+                and tr.get("action") == "github_create_pull_request"
+                and tr.get("status") == "unauthorized"
+            ):
+                continue
+            tool_failures.append(tr)
+        if tool_failures:
             unresolved.append("tool_failure")
         # Optional knowledge enforcement (best practices)
         if os.environ.get("HI_MACP_KNOWLEDGE_ENFORCE", "0") == "1":

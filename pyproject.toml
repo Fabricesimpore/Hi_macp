@@ -29,5 +29,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["hi_macp"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["hi_macp*"]

@@ -106,6 +106,11 @@ class AgentToolExecutor:
             )
         else:
             result = self.runner.run_action(action=action, mode=mode, target=target, extra=extra)
+        # Normalize result schema for downstream gating
+        if isinstance(result, dict):
+            result.setdefault("action", action)
+            result.setdefault("mode", mode)
+            result.setdefault("target", target)
         status = result.get("status")
         if status == "success":
             response_type = "inform"

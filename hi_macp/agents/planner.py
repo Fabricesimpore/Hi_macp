@@ -53,6 +53,23 @@ class AgentPlanner:
                 # If module not found, drop a hint file for humans/LLM
                 Path("CI_AUTO_IMPORT_HINT.txt").write_text("Detected import error but module name not parsed.\n")
                 applied.append("wrote CI_AUTO_IMPORT_HINT.txt for unresolved import error")
+        if reason == "packaging_missing_subpackages":
+            pyproj = Path("pyproject.toml")
+            if pyproj.exists():
+                text = pyproj.read_text()
+                if 'packages = ["hi_macp"]' in text or "[tool.setuptools.packages.find]" not in text:
+                    # minimal deterministic fix for missing subpackages
+                    fixed = re.sub(
+                        r"\\[tool\\.setuptools\\][^\\[]*",
+                        "[tool.setuptools]\\ninclude-package-data = true\\n\\n[tool.setuptools.packages.find]\\ninclude = [\"hi_macp*\"]\\n\\n",
+                        text,
+                        flags=re.DOTALL,
+                    )
+                    pyproj.write_text(fixed)
+                    applied.append("fixed pyproject.toml packaging to include hi_macp subpackages")
+            else:
+                Path("CI_PACKAGING_HINT.txt").write_text("CI indicates packaging missing subpackages. Ensure setuptools finds hi_macp*.\n")
+                applied.append("wrote CI_PACKAGING_HINT.txt for packaging issue")
         if applied:
             shared.setdefault("world_state", {})["ci_autofix_applied"] = applied
             self.manager.save_shared(shared)
