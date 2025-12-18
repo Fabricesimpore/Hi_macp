@@ -32,4 +32,5 @@ dev = [
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["hi_macp*"]
+where = ["."]
+include = ["hi_macp", "hi_macp.*"]

@@ -341,6 +341,12 @@ class AgentMonitor:
         role_goals = shared.get("world_state", {}).get("role_goals") or {}
         # If no challenge, accept a tradeoff-tagged revise/repair as sufficient debate
         if challenge_idx is None:
+            # Also accept a structured propose/revise with tradeoffs as sufficient for MVP execution.
+            for h in reversed(history):
+                if h.get("type") in {"propose", "revise"}:
+                    trade = (h.get("content") or {}).get("tradeoffs") or {}
+                    if trade.get("option") and trade.get("justification"):
+                        return True
             return any(
                 h.get("type") in {"revise", "repair"}
                 and "tradeoff" in json.dumps(h.get("content", {})).lower()
