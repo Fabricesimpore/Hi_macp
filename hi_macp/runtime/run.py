@@ -435,6 +435,7 @@ def main() -> None:
             branch = shared_state.get("world_state", {}).get("github", {}).get("branch", "ci-fix/auto")
             actions = [
                 {"action": "git_checkout_branch", "mode": "execute", "target": None, "extra": {"branch": branch}},
+                {"action": "git_add", "mode": "execute", "target": None, "extra": {}},
                 {"action": "git_commit", "mode": "execute", "target": None, "extra": {"message": "ci-fix: trivial change"}},
                 {"action": "git_push", "mode": "execute", "target": None, "extra": {"branch": branch}},
                 {"action": "github_create_pull_request", "mode": "execute", "target": None, "extra": {"owner": os.environ.get("HI_MACP_GH_OWNER", ""), "repo": os.environ.get("HI_MACP_GH_REPO", ""), "head": branch, "base": os.environ.get("HI_MACP_GH_BRANCH", "main"), "title": "ci-fix: trivial change", "body": "Automated PR from HI-MACP"}},

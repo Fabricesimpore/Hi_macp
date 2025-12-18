@@ -53,6 +53,8 @@ class AgentToolExecutor:
             result = self.wrappers.git_diff(target)
         elif action == "git_checkout_branch":
             result = self.wrappers.git_checkout_new_branch(extra.get("branch", "ci-fix/auto"), target)
+        elif action == "git_add":
+            result = self.wrappers.git_add_all(target)
         elif action == "git_commit":
             result = self.wrappers.git_commit(extra.get("message", "hi-macp commit"), target)
         elif action == "git_push":

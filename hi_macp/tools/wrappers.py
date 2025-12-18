@@ -118,6 +118,10 @@ class ToolWrappers:
         args = ["commit", "-am", message]
         return self.runner.run("git", args, cwd=repo)
 
+    def git_add_all(self, repo: Optional[str] = None) -> Dict[str, Any]:
+        args = ["add", "-A"]
+        return self.runner.run("git", args, cwd=repo)
+
     def git_push(self, branch: str = "main", repo: Optional[str] = None) -> Dict[str, Any]:
         args = ["push", "origin", branch]
         return self.runner.run("git", args, cwd=repo)
