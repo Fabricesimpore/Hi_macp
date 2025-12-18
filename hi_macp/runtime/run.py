@@ -443,9 +443,10 @@ def main() -> None:
             shared_state.setdefault("world_state", {})["tool_actions"] = actions
         if not actions:
             return shared_state
-        # Skip only after alignment; allow during repair/closing to populate tool_results for monitor
-        plan_status_local = shared_state.get("commitments", {}).get("plan_status")
-        phase_local = shared_state.get("phase")
+        # Ensure phase allows tool execution. This is a transport/tooling phase, not a negotiation message.
+        if allow_exec and shared_state.get("phase") in {"closing", "repair", "negotiation"}:
+            shared_state["phase"] = "execution"
+            manager.save_shared(shared_state)
         results = []
         for action in actions:
             tool_msg = Message(
